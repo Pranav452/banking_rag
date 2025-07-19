@@ -67,7 +67,7 @@ export class BankingRAGChain {
     // Initialize Groq LLM
     this.llm = new ChatGroq({
       apiKey: process.env.GROQ_API_KEY || 'dummy-key',
-      model: process.env.GROQ_MODEL_NAME || 'mixtral-8x7b-32768',
+      model: process.env.GROQ_MODEL_NAME || 'llama-3.3-70b-versatile',
       temperature: 0.1, // Low temperature for consistent banking information
       maxTokens: 2000
     })

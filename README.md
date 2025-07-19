@@ -75,7 +75,7 @@ SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
 
 # LLM Configuration
 GROQ_API_KEY=your-groq-api-key
-GROQ_MODEL_NAME=mixtral-8x7b-32768
+GROQ_MODEL_NAME=llama-3.3-70b-versatile
 
 # Ollama Configuration (Local Nomic Embeddings)
 OLLAMA_BASE_URL=http://localhost:11434
