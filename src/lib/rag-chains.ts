@@ -7,6 +7,14 @@ import { Document as LangChainDocument } from 'langchain/document'
 import { ollamaEmbeddings } from './embeddings'
 import { supabaseAdmin } from './supabase'
 import { BankingContext, DocumentSource } from '../types/database'
+import { 
+  traceVectorRetrieval, 
+  traceBankingRAGQuery, 
+  traceComplianceCheck, 
+  traceLoanCalculation,
+  trackQueryMetrics,
+  trackError
+} from './langsmith-config'
 
 export class BankingVectorRetriever extends BaseRetriever {
   lc_namespace = ['banking', 'retrievers']
@@ -19,41 +27,49 @@ export class BankingVectorRetriever extends BaseRetriever {
   }
 
   async _getRelevantDocuments(query: string): Promise<LangChainDocument[]> {
-    try {
-      // Generate query embedding
-      const queryEmbedding = await ollamaEmbeddings.embedQuery(query)
-      
-      // Search for similar documents using cosine similarity
-      const { data: chunks, error } = await supabaseAdmin.rpc('match_documents', {
-        query_embedding: JSON.stringify(queryEmbedding),
-        match_threshold: this.similarityThreshold,
-        match_count: this.maxResults
-      })
-      
-      if (error) throw error
-      
-      // Convert to LangChain documents
-      return chunks.map((chunk: {
-        id: string
-        document_id: string
-        content: string
-        similarity: number
-        document_type: string
-        metadata: Record<string, unknown>
-      }) => new LangChainDocument({
-        pageContent: chunk.content,
-        metadata: {
-          document_id: chunk.document_id,
-          chunk_id: chunk.id,
-          similarity: chunk.similarity,
-          document_type: chunk.document_type,
-          ...chunk.metadata
-        }
-      }))
-    } catch (error) {
-      console.error('Retrieval error:', error)
-      return []
-    }
+    return traceVectorRetrieval(query, async () => {
+      try {
+        // Generate query embedding
+        const queryEmbedding = await ollamaEmbeddings.embedQuery(query)
+        
+        // Search for similar documents using cosine similarity
+        const { data: chunks, error } = await supabaseAdmin.rpc('match_documents', {
+          query_embedding: JSON.stringify(queryEmbedding),
+          match_threshold: this.similarityThreshold,
+          match_count: this.maxResults
+        })
+        
+        if (error) throw error
+        
+        // Convert to LangChain documents
+        const documents = chunks.map((chunk: {
+          id: string
+          document_id: string
+          content: string
+          similarity: number
+          document_type: string
+          metadata: Record<string, unknown>
+        }) => new LangChainDocument({
+          pageContent: chunk.content,
+          metadata: {
+            document_id: chunk.document_id,
+            chunk_id: chunk.id,
+            similarity: chunk.similarity,
+            document_type: chunk.document_type,
+            ...chunk.metadata
+          }
+        }))
+        
+        // Track retrieval metrics
+        await trackQueryMetrics('vector_retrieval', Date.now(), 0, documents.length)
+        
+        return documents
+      } catch (error) {
+        console.error('Retrieval error:', error)
+        await trackError('vector_retrieval', error instanceof Error ? error : new Error(String(error)))
+        return []
+      }
+    })
   }
 }
 
@@ -99,40 +115,51 @@ export class BankingRAGChain {
     sources: DocumentSource[]
     confidence: number
   }> {
-    const startTime = Date.now()
-    
-    try {
-      // Enhance query with banking context
-      const enhancedQuery = this.enhanceQueryWithContext(question, context)
+    return traceBankingRAGQuery(question, context, async () => {
+      const startTime = Date.now()
       
-      // Retrieve relevant documents
-      const relevantDocs = await this.retriever._getRelevantDocuments(enhancedQuery)
-      
-      if (relevantDocs.length === 0) {
-        return {
-          answer: "I couldn't find relevant information in the banking knowledge base. Could you please rephrase your question or be more specific?",
-          sources: [],
-          confidence: 0
+      try {
+        // Enhance query with banking context
+        const enhancedQuery = this.enhanceQueryWithContext(question, context)
+        
+        // Retrieve relevant documents
+        const relevantDocs = await this.retriever._getRelevantDocuments(enhancedQuery)
+        
+        if (relevantDocs.length === 0) {
+          const result = {
+            answer: "I couldn't find relevant information in the banking knowledge base. Could you please rephrase your question or be more specific?",
+            sources: [],
+            confidence: 0
+          }
+          
+          // Track no results
+          await trackQueryMetrics('rag_no_results', Date.now() - startTime, 0, 0)
+          
+          return result
         }
-      }
 
-      // Generate answer using RAG
-      const answer = await this.generateAnswer(question, relevantDocs, context)
-      
-      // Extract sources for citation
-      const sources = this.extractSources(relevantDocs)
-      
-      // Calculate confidence based on similarity scores
-      const confidence = this.calculateConfidence(relevantDocs)
-      
-      // Log query for analytics
-      await this.logQuery(question, answer, sources, Date.now() - startTime, userId || undefined)
-      
-      return { answer, sources, confidence }
-    } catch (error) {
-      console.error('RAG query error:', error)
-      throw new Error(`Failed to process query: ${error}`)
-    }
+        // Generate answer using RAG
+        const answer = await this.generateAnswer(question, relevantDocs, context)
+        
+        // Extract sources for citation
+        const sources = this.extractSources(relevantDocs)
+        
+        // Calculate confidence based on similarity scores
+        const confidence = this.calculateConfidence(relevantDocs)
+        
+        // Track successful query
+        await trackQueryMetrics('rag_success', Date.now() - startTime, confidence, sources.length)
+        
+        // Log query for analytics
+        await this.logQuery(question, answer, sources, Date.now() - startTime, userId || undefined)
+        
+        return { answer, sources, confidence }
+      } catch (error) {
+        console.error('RAG query error:', error)
+        await trackError('rag_query', error instanceof Error ? error : new Error(String(error)))
+        throw new Error(`Failed to process query: ${error}`)
+      }
+    })
   }
 
   private enhanceQueryWithContext(query: string, context: BankingContext): string {
@@ -263,22 +290,29 @@ export class ComplianceRAGChain extends BankingRAGChain {
     recommendations: string[]
     sources: DocumentSource[]
   }> {
-    const context: BankingContext = {
-      regulatory_context: regulations,
-      user_role: 'compliance_analyst'
-    }
+    return traceComplianceCheck(scenario, regulations, async () => {
+      const context: BankingContext = {
+        regulatory_context: regulations,
+        user_role: 'compliance_analyst'
+      }
 
-    const query = `Compliance analysis: ${scenario}. Check against regulations: ${regulations.join(', ')}`
-    
-    const result = await this.queryWithContext(query, context, userId)
-    
-    // Parse compliance-specific response
-    return {
-      compliant: result.answer.toLowerCase().includes('compliant'),
-      issues: this.extractIssues(result.answer),
-      recommendations: this.extractRecommendations(result.answer),
-      sources: result.sources
-    }
+      const query = `Compliance analysis: ${scenario}. Check against regulations: ${regulations.join(', ')}`
+      
+      const result = await this.queryWithContext(query, context, userId)
+      
+      // Parse compliance-specific response
+      const complianceResult = {
+        compliant: result.answer.toLowerCase().includes('compliant'),
+        issues: this.extractIssues(result.answer),
+        recommendations: this.extractRecommendations(result.answer),
+        sources: result.sources
+      }
+      
+      // Track compliance check metrics
+      await trackQueryMetrics('compliance_check', 0, result.confidence, result.sources.length)
+      
+      return complianceResult
+    })
   }
 
   private extractIssues(answer: string): string[] {
@@ -337,28 +371,35 @@ export class LoanCalculatorRAGChain extends BankingRAGChain {
     calculations: string
     sources: DocumentSource[]
   }> {
-    const context: BankingContext = {
-      loan_products: [loanType],
-      user_role: 'loan_officer'
-    }
+    return traceLoanCalculation(loanType, amount, term, async () => {
+      const context: BankingContext = {
+        loan_products: [loanType],
+        user_role: 'loan_officer'
+      }
 
-    const query = `Calculate ${loanType} loan for $${amount} over ${term} months. Include current rates, payment calculation, and total interest.`
-    
-    const result = await this.queryWithContext(query, context, userId)
-    
-    // Extract numerical values from response
-    const calculations = result.answer
-    const rate = this.extractRate(calculations)
-    const monthlyPayment = this.calculateMonthlyPayment(amount, rate, term)
-    const totalInterest = (monthlyPayment * term) - amount
-    
-    return {
-      monthlyPayment,
-      totalInterest,
-      rate,
-      calculations,
-      sources: result.sources
-    }
+      const query = `Calculate ${loanType} loan for $${amount} over ${term} months. Include current rates, payment calculation, and total interest.`
+      
+      const result = await this.queryWithContext(query, context, userId)
+      
+      // Extract numerical values from response
+      const calculations = result.answer
+      const rate = this.extractRate(calculations)
+      const monthlyPayment = this.calculateMonthlyPayment(amount, rate, term)
+      const totalInterest = (monthlyPayment * term) - amount
+      
+      const calculationResult = {
+        monthlyPayment,
+        totalInterest,
+        rate,
+        calculations,
+        sources: result.sources
+      }
+      
+      // Track loan calculation metrics
+      await trackQueryMetrics('loan_calculation', 0, result.confidence, result.sources.length)
+      
+      return calculationResult
+    })
   }
 
   private extractRate(calculations: string): number {
