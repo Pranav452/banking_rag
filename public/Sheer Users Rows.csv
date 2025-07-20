@@ -1,0 +1,2 @@
+id,email,role,department,permissions,created_at,last_active
+e6022dd1-96f9-4685-bb22-84c2b0e3ae05,admin@bank.com,admin,IT,"{""full_access"":true,""manage_users"":true,""manage_documents"":true}",2025-07-19 19:09:49.792718,2025-07-19 19:09:49.792718

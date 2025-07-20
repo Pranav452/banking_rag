@@ -1,0 +1,6 @@
+id,title,document_type,file_path,version,effective_date,status,metadata,created_at,updated_at
+7071751a-c3c4-4586-a41c-37da493416ad,Core Range Customer Rate Sheet.pdf,regulatory_manual,,,,active,"{""version"":""e"",""file_size"":309288,""file_type"":""application/pdf"",""uploaded_by"":""anonymous"",""effective_date"":""2025-07-02""}",2025-07-19 20:05:05.4,2025-07-19 20:05:05.4
+739e19e0-0c21-4eb1-ab0b-d0e81686bc52,policy.pdf,loan_handbook,,,,active,"{""version"":""1.0"",""file_size"":1931609,""file_type"":""application/pdf"",""uploaded_by"":""anonymous"",""effective_date"":""2025-07-10""}",2025-07-19 20:57:01.165,2025-07-19 20:57:01.165
+8b0210ac-673a-4de0-b360-6351df1079fb,Sample Regulatory Manual,regulatory_manual,,,,active,"{""sample"":true,""version"":""1.0""}",2025-07-19 19:09:49.792718,2025-07-19 19:09:49.792718
+a81927f3-f468-46a7-8e2f-c33bbc155e38,Sample Policy Document,policy_document,,,,active,"{""sample"":true,""version"":""1.0""}",2025-07-19 19:09:49.792718,2025-07-19 19:09:49.792718
+e3b8e884-a0da-4739-be54-d1e1bc36324a,Sample Loan Handbook,loan_handbook,,,,active,"{""sample"":true,""version"":""1.0""}",2025-07-19 19:09:49.792718,2025-07-19 19:09:49.792718
